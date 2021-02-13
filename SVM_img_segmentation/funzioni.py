@@ -2,10 +2,11 @@ import imageio
 import numpy as np
 import scipy.ndimage as nd
 import sklearn
-from skimage.color import rgb2lab, rgba2rgb, rgb2hsv
+from skimage.color import rgb2lab, rgba2rgb, rgb2hsv, rgb2hed
 from scipy.stats import entropy
 from sklearn.metrics import matthews_corrcoef, confusion_matrix
 from sklearn.svm import LinearSVC
+from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 
 def _entropy(values):
@@ -84,6 +85,50 @@ def image_to_data(img, size=13):
     layers['R_variance'] = mean_sqr_R - mean_R**2
     layers['G_variance'] = mean_sqr_G - mean_G**2
     layers['B_variance'] = mean_sqr_B - mean_B**2
+
+    # ----- SPAZIO COLORE HED -----
+
+    image_array_hed = rgb2hed(image_array)
+
+    # separiamo le componenti H, E, D
+    H = image_array_hed[..., 0]
+    E = image_array_hed[..., 1]
+    D = image_array_hed[..., 2]
+
+    # normalizziamo i valori per restare
+    # attorno all'intervallo -0.5, 0.5
+    scaler = StandardScaler()
+    scaler.fit(H)
+    layers['H'] = scaler.transform(H)*0.5
+    scaler.fit(E)
+    layers['E'] = scaler.transform(E)*0.5
+    scaler.fit(D)
+    layers['D'] = scaler.transform(D)*0.5
+
+    # calcolo filtro mediano
+    layers['H_mf'] = nd.median_filter(H, size=size)
+    layers['E_mf'] = nd.median_filter(E, size=size)
+    layers['D_mf'] = nd.median_filter(D, size=size)
+
+    # edge detection
+    # usiamo per il momento i parametri di default
+    # e ci riserviamo in futuro la possibilità di
+    # sperimentare con parametri diversi
+    layers['H_edge'] = nd.sobel(H)
+    layers['E_edge'] = nd.sobel(E)
+    layers['D_edge'] = nd.sobel(D)
+
+    # varianza
+    mean_H = nd.uniform_filter(H, (size, size))
+    mean_E = nd.uniform_filter(E, (size, size))
+    mean_D = nd.uniform_filter(D, (size, size))
+    mean_sqr_H = nd.uniform_filter(H**2, (size, size))
+    mean_sqr_E = nd.uniform_filter(E**2, (size, size))
+    mean_sqr_D = nd.uniform_filter(D**2, (size, size))
+
+    layers['H_variance'] = mean_sqr_H - mean_H**2
+    layers['E_variance'] = mean_sqr_E - mean_E**2
+    layers['D_variance'] = mean_sqr_D - mean_D**2
 
     # ----- SPAZIO COLORE LAB -----
 
@@ -323,6 +368,11 @@ def select_layers(layers, feature_names=[]):
             "L_mf", "a_mf", "b_mf",
             "L_edge", "a_edge", "b_edge",
             "L_variance", "a_variance", "b_variance",
+
+            "H", "E", "D",
+            "H_mf", "E_mf", "D_mf",
+            "H_edge", "E_edge", "D_edge",
+            "H_variance", "E_variance", "D_variance",
 
             "h", "s", "v",
             "h_mf", "s_mf", "v_mf",
